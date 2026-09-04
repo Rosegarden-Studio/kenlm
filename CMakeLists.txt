@@ -77,22 +77,15 @@ endif()
 # shared and only its third-party libraries need to be static.
 # ------------------------------------------------------------------
 
-if (FORCE_STATIC)
-
+if (FORCE_STATIC OR ASR_BUILD_STATIC_DEPS)
     set(Boost_USE_STATIC_LIBS ON)
+    set(Boost_USE_STATIC_RUNTIME ON)
 
-    set_property(
-        GLOBAL PROPERTY LINK_SEARCH_START_STATIC ON
-    )
-
-    set_property(
-        GLOBAL PROPERTY LINK_SEARCH_END_STATIC ON
-    )
-
-    set(BUILD_SHARED_LIBS OFF)
+    set_property(GLOBAL PROPERTY LINK_SEARCH_START_STATIC ON)
+    set_property(GLOBAL PROPERTY LINK_SEARCH_END_STATIC ON)
+    set(BUILD_SHARED_LIBRARIES OFF)
 
     if (MSVC)
-
         set(flag_vars
             CMAKE_CXX_FLAGS
             CMAKE_CXX_FLAGS_DEBUG
@@ -107,41 +100,18 @@ if (FORCE_STATIC)
         )
 
         foreach(flag_var ${flag_vars})
-
             if(${flag_var} MATCHES "/MD")
-
-                string(
-                    REGEX REPLACE
-                    "/MD"
-                    "/MT"
-                    ${flag_var}
-                    "${${flag_var}}"
-                )
-
+                string(REGEX REPLACE "/MD" "/MT"
+                    ${flag_var} "${${flag_var}}")
             endif()
-
         endforeach()
-
-    elseif(NOT CMAKE_C_COMPILER_ID MATCHES ".*Clang")
-
-        set(
-            CMAKE_EXE_LINKER_FLAGS
-            "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static"
-        )
-
-        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-
+    else()
+        if (NOT CMAKE_C_COMPILER_ID MATCHES ".*Clang")
+            set(CMAKE_EXE_LINKER_FLAGS
+                "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++"
+            )
+        endif()
     endif()
-
-    # These are only relevant when building completely static
-    # executables. Leave the normal ASR shared-library build alone.
-    set(CMAKE_EXE_LINK_DYNAMIC_C_FLAGS)
-    set(CMAKE_EXE_LINK_DYNAMIC_CXX_FLAGS)
-    set(CMAKE_SHARED_LIBRARY_C_FLAGS)
-    set(CMAKE_SHARED_LIBRARY_CXX_FLAGS)
-    set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS)
-    set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS)
-
 endif()
 
 # ------------------------------------------------------------------
