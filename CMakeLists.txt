@@ -1,43 +1,40 @@
+```cmake
 cmake_minimum_required(VERSION 3.10)
 
-# Define a single cmake project
+if(WIN32)
+    set(Boost_USE_STATIC_LIBS OFF)
+
+    # The auto-linking feature has problems with USE_STATIC_LIBS off,
+    # so disable it and explicitly select the dynamic Boost variants.
+    add_definitions(
+        -DBOOST_ALL_NO_LIB
+        -DBOOST_PROGRAM_OPTIONS_DYN_LINK
+        -DBOOST_IOSTREAMS_DYN_LINK
+        -DBOOST_THREAD_DYN_LINK
+    )
+elseif(ASR_BUILD_STATIC_DEPS)
+    # ASR_BUILD_STATIC_DEPS means that the ASR project wants its
+    # third-party dependencies controlled/bundled by the parent project.
+    #
+    # Deliberately do NOT touch Boost_USE_STATIC_LIBS here. The parent
+    # project sets it (via CACHE FORCE) before calling add_subdirectory() on
+    # this file, and setting it again here as a normal variable would shadow
+    # that cache value for the rest of this scope, silently undoing whatever
+    # the parent asked for.
+endif()
+
 project(kenlm)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ------------------------------------------------------------------
-# KenLM build options
-# ------------------------------------------------------------------
-
 option(FORCE_STATIC "Build static executables" OFF)
 option(COMPILE_TESTS "Compile tests" OFF)
 option(ENABLE_PYTHON "Build Python bindings" OFF)
 option(BUILD_PYTHON_STANDALONE "Build standalone C++ lib with Python install" OFF)
 
-# KenLM itself is always built as static libraries when included by
-# the parent ASR project.
-#
-# The parent project sets BUILD_SHARED_LIBS=OFF, but explicitly set
-# it here as well so KenLM cannot accidentally produce shared libs.
-set(BUILD_SHARED_LIBS OFF)
-
-# ------------------------------------------------------------------
-# Static Boost
-#
-# KenLM needs Boost libraries, but they must be linked statically
-# into the ASR shared library.
-# ------------------------------------------------------------------
-
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_STATIC_RUNTIME ON)
-set(Boost_USE_MULTITHREADED ON)
-
-# ------------------------------------------------------------------
-# Eigen3
-# ------------------------------------------------------------------
-
+# Eigen3 less than 3.1.0 has a race condition.
 find_package(Eigen3 3.1.0 CONFIG)
 
 include(CMakeDependentOption)
@@ -50,15 +47,14 @@ cmake_dependent_option(
     OFF
 )
 
-set(KENLM_MAX_ORDER 6 CACHE STRING
+set(
+    KENLM_MAX_ORDER
+    6
+    CACHE STRING
     "Maximum supported ngram order"
 )
 
-# ------------------------------------------------------------------
-# Python standalone build
-# ------------------------------------------------------------------
-
-if (BUILD_PYTHON_STANDALONE)
+if(BUILD_PYTHON_STANDALONE)
 
     include(
         ${CMAKE_CURRENT_LIST_DIR}/python/BuildStandalone.cmake
@@ -68,24 +64,39 @@ if (BUILD_PYTHON_STANDALONE)
 
 endif()
 
-# ------------------------------------------------------------------
-# FORCE_STATIC
+# ---------------------------------------------------------------------------
+# KenLM FORCE_STATIC
 #
-# This option is retained for KenLM compatibility.
+# This is KenLM's original option and is intentionally separate from
+# ASR_BUILD_STATIC_DEPS.
 #
-# It is NOT enabled by the ASR project because the ASR library is
-# shared and only its third-party libraries need to be static.
-# ------------------------------------------------------------------
+# FORCE_STATIC is for KenLM's own static executable builds.
+# ASR_BUILD_STATIC_DEPS is for the parent ASR shared-library build.
+# ---------------------------------------------------------------------------
 
-if (FORCE_STATIC OR ASR_BUILD_STATIC_DEPS)
+if(FORCE_STATIC)
+
     set(Boost_USE_STATIC_LIBS ON)
-    set(Boost_USE_STATIC_RUNTIME ON)
 
-    set_property(GLOBAL PROPERTY LINK_SEARCH_START_STATIC ON)
-    set_property(GLOBAL PROPERTY LINK_SEARCH_END_STATIC ON)
-    set(BUILD_SHARED_LIBRARIES OFF)
+    set_property(
+        GLOBAL PROPERTY
+        LINK_SEARCH_START_STATIC
+        ON
+    )
 
-    if (MSVC)
+    set_property(
+        GLOBAL PROPERTY
+        LINK_SEARCH_END_STATIC
+        ON
+    )
+
+    set(
+        BUILD_SHARED_LIBRARIES
+        OFF
+    )
+
+    if(MSVC)
+
         set(flag_vars
             CMAKE_CXX_FLAGS
             CMAKE_CXX_FLAGS_DEBUG
@@ -100,23 +111,52 @@ if (FORCE_STATIC OR ASR_BUILD_STATIC_DEPS)
         )
 
         foreach(flag_var ${flag_vars})
+
             if(${flag_var} MATCHES "/MD")
-                string(REGEX REPLACE "/MD" "/MT"
-                    ${flag_var} "${${flag_var}}")
+
+                string(
+                    REGEX REPLACE
+                    "/MD"
+                    "/MT"
+                    ${flag_var}
+                    "${${flag_var}}"
+                )
+
             endif()
+
         endforeach()
+
     else()
-        if (NOT CMAKE_C_COMPILER_ID MATCHES ".*Clang")
-            set(CMAKE_EXE_LINKER_FLAGS
-                "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++"
+
+        if(NOT CMAKE_C_COMPILER_ID MATCHES ".*Clang")
+
+            set(
+                CMAKE_EXE_LINKER_FLAGS
+                "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static"
             )
+
         endif()
+
+        set(
+            CMAKE_FIND_LIBRARY_SUFFIXES
+            ".a"
+        )
+
+        # KenLM's original FORCE_STATIC behavior.
+        set(CMAKE_EXE_LINK_DYNAMIC_C_FLAGS)
+        set(CMAKE_EXE_LINK_DYNAMIC_CXX_FLAGS)
+        set(CMAKE_SHARED_LIBRARY_C_FLAGS)
+        set(CMAKE_SHARED_LIBRARY_CXX_FLAGS)
+        set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS)
+        set(CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS)
+
     endif()
+
 endif()
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Output directories
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 set(
     EXECUTABLE_OUTPUT_PATH
@@ -128,40 +168,43 @@ set(
     ${PROJECT_BINARY_DIR}/lib
 )
 
-if (NOT CMAKE_BUILD_TYPE)
+if(NOT CMAKE_BUILD_TYPE)
 
-    set(CMAKE_BUILD_TYPE Release)
+    set(
+        CMAKE_BUILD_TYPE
+        Release
+    )
 
 endif()
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Tests
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
-if (COMPILE_TESTS)
+if(COMPILE_TESTS)
 
     include(CTest)
     enable_testing()
 
 endif()
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # KenLM helper functions
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 include(
     cmake/KenLMFunctions.cmake
 )
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # MSVC
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 if(MSVC)
 
     set(
         CMAKE_C_FLAGS
-        "${CMAKE_CXX_FLAGS} /w34716"
+        "${CMAKE_C_FLAGS} /w34716"
     )
 
     set(
@@ -171,9 +214,9 @@ if(MSVC)
 
 endif()
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # KenLM modules
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 list(
     APPEND
@@ -181,15 +224,9 @@ list(
     ${PROJECT_SOURCE_DIR}/cmake/modules
 )
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Boost
-#
-# IMPORTANT:
-# Boost_USE_STATIC_LIBS is ON above.
-#
-# Do NOT use the Windows dynamic-link definitions from the original
-# KenLM CMakeLists.txt.
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 find_package(
     Boost 1.41.0
@@ -205,9 +242,9 @@ include_directories(
     ${Boost_INCLUDE_DIRS}
 )
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Threads
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 set(
     THREADS_PREFER_PTHREAD_FLAG
@@ -219,9 +256,9 @@ find_package(
     REQUIRED
 )
 
-# ------------------------------------------------------------------
-# KenLM source
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# KenLM
+# ---------------------------------------------------------------------------
 
 add_subdirectory(util)
 add_subdirectory(lm)
@@ -232,9 +269,9 @@ if(ENABLE_PYTHON)
 
 endif()
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Installation
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 install(
     EXPORT kenlmTargets
@@ -264,16 +301,19 @@ foreach(
     )
 
     install(
-        FILES ${HEADERS}
-        DESTINATION include/kenlm/${SUBDIR}
-        COMPONENT headers
+        FILES
+            ${HEADERS}
+        DESTINATION
+            include/kenlm/${SUBDIR}
+        COMPONENT
+            headers
     )
 
 endforeach()
 
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Config
-# ------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 include(
     CMakePackageConfigHelpers
@@ -293,3 +333,4 @@ install(
     DESTINATION
         share/kenlm/cmake
 )
+```
